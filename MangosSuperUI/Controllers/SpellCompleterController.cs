@@ -547,6 +547,8 @@ public class SpellCompleterController : Controller
             BlpBase64 = node?["blpBase64"]?.GetValue<string>(),
         }).ToList() ?? new List<CompleterBlpDto>();
 
+        req.Composition = SpellComposition.Parse(entry["composition"]);
+
         req.Audio = (entry["audio"] as JsonArray)?.Select(node => new CompleterAudioDto
         {
             Cue = node?["cue"]?.GetValue<string>() ?? "",
@@ -643,6 +645,7 @@ public class SpellCompleterController : Controller
             if (req.RangeIndex.HasValue) overrides["rangeIndex"] = req.RangeIndex.Value;
             if (req.DurationIndex.HasValue) overrides["durationIndex"] = req.DurationIndex.Value;
             if (req.Cooldown.HasValue) overrides["recoveryTime"] = req.Cooldown.Value;
+            if (req.MissileSpeed is { } missileSpeed && missileSpeed > 0f) overrides["speed"] = missileSpeed;
 
             // Effect-slot overrides: the mechanics editor (School Damage / DoT /
             // Slow / Heal ...). Only CHANGED slots arrive; each carries its full
@@ -1038,16 +1041,8 @@ public class SpellCompleterController : Controller
                 }, bytes));
             }
 
-            // The area cue has nowhere to land: SpellVisualCloner clones the stage
-            // kits, and the area kit (SpellVisual field 13) is not among them —
-            // patching the source's area kit would change every spell that shares
-            // it. Say so rather than storing bytes that silently do nothing.
-            int areaTracks = audioTracks.RemoveAll(t =>
-                string.Equals(t.meta.Cue, "area", StringComparison.OrdinalIgnoreCase));
-            if (areaTracks > 0)
-                warnings.Add($"{areaTracks} area sound(s) dropped — area visuals are not cloned " +
-                             "per spell, so wiring one would change the sound for every spell " +
-                             "sharing that area kit");
+            // The area kit (SpellVisual field 13) is cloned per spell alongside the stage
+            // kits (SpellVisualCloner), so an area sound lands on the spell's own copy.
 
             CompleterStore.Save(_env.WebRootPath, req.SpellName,
                 new CompleterStore.Manifest
@@ -1055,6 +1050,7 @@ public class SpellCompleterController : Controller
                     TempName = req.TempName ?? "",
                     SourceSpellEntry = req.SourceSpellEntry,
                     ExportedAtUtc = req.ExportedAtUtc ?? "",
+                    Composition = req.Composition,
                 },
                 pathM2s, extraFiles, audioTracks);
 
@@ -1240,6 +1236,9 @@ public class CompleteSpellRequest
     public int? RangeIndex { get; set; }
     public int? DurationIndex { get; set; }
     public int? Cooldown { get; set; }
+    /// <summary>Projectile flight speed in yards per second (spell_template.speed / Spell.dbc
+    /// field 37). Null = inherit the source spell's.</summary>
+    public float? MissileSpeed { get; set; }
     public bool CopySourceTrainers { get; set; }
     public bool GenerateAllRanks { get; set; }
     public Dictionary<int, CompleterRankOverride>? RankOverrides { get; set; }
@@ -1260,6 +1259,10 @@ public class CompleteSpellRequest
     /// ever populated from a pushed design — the file drop-zone path has never
     /// carried audio and still does not.</summary>
     public List<CompleterAudioDto>? Audio { get; set; }
+
+    /// <summary>The creator's kit-level composition (session "composition" block). Only
+    /// ever populated from a pushed design.</summary>
+    public SpellComposition? Composition { get; set; }
 }
 
 public class CompleterEffectDto

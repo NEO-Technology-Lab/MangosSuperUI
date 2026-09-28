@@ -754,13 +754,15 @@ public class ArmorForgeController : Controller
         var ext = ExtractDressingSlots(lane, entry, race, gender);
         if (ext is null || ext.Value.SlotDisks.Count == 0) return Json(new { success = false, error = "no sampleable texture" });
 
-        // Sample the largest painted slot (chest-like slots dominate the colourway).
-        var disk = ext.Value.SlotDisks.OrderBy(kv => kv.Key).First().Value;
-        var families = _palette.DetectFamilies(disk);
-        if (families.Count == 0) return Json(new { success = false, error = "no colour families detected" });
-        var chromatic = families.Where(f => f.Family is not ("white" or "black" or "grey")).ToList();
-        var primary = (chromatic.Count > 0 ? chromatic : families).OrderByDescending(f => f.Percent).First();
-        return Json(new { success = true, primaryHex = HslToHex(primary.MeanHue, Math.Max(0.5f, primary.MeanSat), 0.5f) });
+        // The same primary the "none" recolor anchors on — detected across every painted slot with
+        // the same rule (DetectPrimaryAcross) — so the seed is the colour that will move. A neutral
+        // primary (bare plate) seeds as the plate it is, not a forced half-saturated hue.
+        var primary = _palette.DetectPrimaryAcross(ext.Value.SlotDisks.OrderBy(kv => kv.Key).Select(kv => kv.Value));
+        if (primary is null) return Json(new { success = false, error = "no colour families detected" });
+        bool neutral = primary.Family is "grey" or "white" or "black";
+        return Json(new { success = true, primaryHex = neutral
+            ? HslToHex(primary.Hue, Math.Min(primary.Sat, 0.1f), Math.Clamp(primary.Lightness, 0.15f, 0.85f))
+            : HslToHex(primary.Hue, Math.Max(0.5f, primary.Sat), 0.5f) });
     }
 
     // HSL (h degrees, s/l 0..1) → #rrggbb, for the colour picker.

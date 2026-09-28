@@ -78,6 +78,22 @@ public class CharacterSkinCompositor
     /// </summary>
     public byte[]? ComposeDefaultSkin(string raceName, string genderName, byte[] baseSkinBlp)
     {
+        // The template look is the same composite as a real character's, at the character-creation
+        // defaults: skin 0, face 0, the hair style the GLB's hair geoset/sheet were built for, hair
+        // colour 0, facial hair 0. That is what carries the EYEBROWS (the facial-hair upper strip)
+        // and the hairline (the hair row's scalp strips) — the face-only composite below painted
+        // neither, so every viewer's template character had a blank brow and hair that dissolved
+        // into the forehead. The face-only path stays as the fallback.
+        try
+        {
+            uint raceId = RaceNameToId(raceName);
+            uint genderId = genderName.Equals("Female", StringComparison.OrdinalIgnoreCase) ? 1u : 0u;
+            uint style = _dbc.GetPreferredHairAppearance(raceId, genderId)?.Style ?? 0u;
+            var full = ComposeCharacterSkin(raceName, genderName, 0, 0, style, 0, 0, out _);
+            if (full is { Length: > 0 }) return full;
+        }
+        catch (Exception ex) { _logger.LogDebug(ex, "CharacterSkinCompositor: full template composite failed for {Race}/{Gender}; face-only fallback", raceName, genderName); }
+
         try
         {
             // Decode base skin → working bitmap

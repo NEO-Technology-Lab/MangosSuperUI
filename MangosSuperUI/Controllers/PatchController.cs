@@ -2110,6 +2110,8 @@ public partial class PatchController : Controller
                 PerPathPatchedM2s = CompleterStore.LoadPerPathM2s(_env.WebRootPath, config.SpellName),
                 ExtraMpqFiles = CompleterStore.LoadExtraFiles(_env.WebRootPath, config.SpellName),
                 CustomAudio = CompleterStore.LoadAudio(_env.WebRootPath, config.SpellName),
+                Composition = CompleterStore.LoadManifest(_env.WebRootPath, config.SpellName)?.Composition,
+                MissileSpeed = r1Fields != null ? (float?)Convert.ToSingle(r1Fields.speed ?? 0f) : null,
                 // Session 45: R1 gameplay fields for DBC accuracy
                 ManaCost = r1Fields != null ? (int?)Convert.ToInt32(r1Fields.manaCost ?? 0) : null,
                 EffectBasePoints0 = r1Fields != null ? (int?)Convert.ToInt32(r1Fields.effectBasePoints1 ?? 0) : null,

@@ -1372,17 +1372,41 @@ public class ItemTextureService
         var modelInfo = _dbc.GetItemModelInfo(resolvedDisplayId);
         if (modelInfo == null) return null;
 
-        string texName = modelInfo.Value.TextureName1;
-        if (string.IsNullOrEmpty(texName)) texName = modelInfo.Value.TextureName2;
-        if (string.IsNullOrEmpty(texName)) return null;
-
-        string mpqPath = $"Item\\ObjectComponents\\{subdir}\\{texName}.blp";
-        var blpData = _mpq.ExtractFile(mpqPath)
-                      ?? _mpq.ExtractFile(mpqPath.ToLowerInvariant());
-        if (blpData == null)
+        // Both texture columns and the client's own candidate list (MSUIClient CharacterRenderer
+        // .CapeTextureCandidates): ObjectComponents then TextureComponents, bare stem then the
+        // _U / _M / _F gender-suffixed sheets. One fixed path missed every cloak whose row names
+        // the second column or a suffixed sheet, and those drew as bare cloth.
+        string? texName = null; byte[]? blpData = null; string mpqPath = "";
+        foreach (string name in new[] { modelInfo.Value.TextureName1, modelInfo.Value.TextureName2 })
+        {
+            if (string.IsNullOrEmpty(name)) continue;
+            string stem = name.Replace('/', '\\').TrimStart('\\');
+            if (stem.EndsWith(".blp", StringComparison.OrdinalIgnoreCase)) stem = stem[..^4];
+            var candidates = stem.Contains('\\')
+                ? new[] { stem + ".blp" }
+                : new[]
+                {
+                    $"Item\\ObjectComponents\\{subdir}\\{stem}.blp",
+                    $"Item\\TextureComponents\\{subdir}\\{stem}.blp",
+                    $"Item\\ObjectComponents\\{subdir}\\{stem}_U.blp",
+                    $"Item\\ObjectComponents\\{subdir}\\{stem}_M.blp",
+                    $"Item\\ObjectComponents\\{subdir}\\{stem}_F.blp",
+                    $"Item\\TextureComponents\\{subdir}\\{stem}_U.blp",
+                    $"Item\\TextureComponents\\{subdir}\\{stem}_M.blp",
+                    $"Item\\TextureComponents\\{subdir}\\{stem}_F.blp",
+                };
+            foreach (string candidate in candidates)
+            {
+                blpData = _mpq.ExtractFile(candidate) ?? _mpq.ExtractFile(candidate.ToLowerInvariant());
+                if (blpData != null) { texName = name; mpqPath = candidate; break; }
+            }
+            if (blpData != null) break;
+        }
+        if (blpData == null || texName is null)
         {
             _logger.LogDebug(
-                "ObjectComponent: displayId {Id} has no BLP at {Path}", displayId, mpqPath);
+                "ObjectComponent: displayId {Id} has no BLP under {Subdir} for '{T1}' / '{T2}'",
+                displayId, subdir, modelInfo.Value.TextureName1, modelInfo.Value.TextureName2);
             return null;
         }
 

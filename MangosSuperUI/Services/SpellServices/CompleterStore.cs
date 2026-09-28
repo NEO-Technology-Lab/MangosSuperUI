@@ -45,6 +45,8 @@ public static class CompleterStore
         public List<ManifestModel> Models { get; set; } = new();
         public List<ManifestExtra> ExtraFiles { get; set; } = new();
         public List<ManifestAudio> AudioTracks { get; set; } = new();
+        /// <summary>The creator's kit-level composition, applied at every rebuild.</summary>
+        public SpellComposition? Composition { get; set; }
     }
 
     public sealed class ManifestModel
@@ -120,6 +122,7 @@ public static class CompleterStore
             TempName = manifestMeta.TempName,
             SourceSpellEntry = manifestMeta.SourceSpellEntry,
             ExportedAtUtc = manifestMeta.ExportedAtUtc,
+            Composition = manifestMeta.Composition,
         };
         for (int i = 0; i < models.Count; i++)
         {
@@ -146,7 +149,7 @@ public static class CompleterStore
             JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    private static Manifest? LoadManifest(string webRoot, string spellName)
+    public static Manifest? LoadManifest(string webRoot, string spellName)
     {
         string path = Path.Combine(DirFor(webRoot, spellName), ManifestName);
         if (!File.Exists(path)) return null;

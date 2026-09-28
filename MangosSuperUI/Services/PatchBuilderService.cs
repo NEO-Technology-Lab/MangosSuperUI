@@ -187,6 +187,9 @@ public class PatchBuilderService
             ["impact"]  = 3,
             ["state"]   = 4,
             ["channel"] = 5,
+            // The area kit (SpellVisual field 13) is cloned per spell like the stage kits
+            // (SpellVisualCloner), so an area sound has a kit of its own to land on.
+            ["area"]    = 13,
         };
 
     // ── Per-DBC scrub floor map ──
@@ -340,7 +343,7 @@ public class PatchBuilderService
                         visualDbc, kitDbc, effectNameDbc,
                         request.SourceVisualId,
                         newVisualId, baseKitId, baseEffectId,
-                        SanitizeName(request.SpellName));
+                        SanitizeName(request.SpellName), request.Composition);
 
                     _logger.LogInformation("PatchBuilder: [{Name}] Cloned visual V:{V} Kits:{K} Effects:{E}",
                         request.SpellName, cloneResult.NewVisualId, cloneResult.KitIdMap.Count, cloneResult.EffectNameIdMap.Count);
@@ -357,6 +360,8 @@ public class PatchBuilderService
 
                     var newSpellRow = spellDbc.CloneRow(request.SourceSpellEntry, request.SpellEntry);
                     spellDbc.PatchRow(request.SpellEntry, FIELD_SPELL_VISUAL_ID, cloneResult.NewVisualId);
+                    if (request.MissileSpeed is { } unifiedSpeed && unifiedSpeed > 0f)
+                        spellDbc.PatchRowFloat(request.SpellEntry, FIELD_SPEED, unifiedSpeed);
 
                     // ── Icon ──
                     uint finalIconId;
@@ -1204,7 +1209,7 @@ public class PatchBuilderService
                 visualDbc, kitDbc, effectNameDbc,
                 request.SourceVisualId,
                 newVisualId, baseKitId, baseEffectId,
-                SanitizeName(request.SpellName));
+                SanitizeName(request.SpellName), request.Composition);
 
             _logger.LogInformation("PatchBuilder: Cloned visual — V:{V} Kits:{K} Effects:{E} Files:{F}",
                 cloneResult.NewVisualId, cloneResult.KitIdMap.Count,
@@ -1222,6 +1227,8 @@ public class PatchBuilderService
 
             // SpellVisualID[0] = field 115 (VERIFIED)
             spellDbc.PatchRow(request.SpellEntry, FIELD_SPELL_VISUAL_ID, cloneResult.NewVisualId);
+            if (request.MissileSpeed is { } missileSpeed && missileSpeed > 0f)
+                spellDbc.PatchRowFloat(request.SpellEntry, FIELD_SPEED, missileSpeed);
 
             // ── Step 4b: SpellIconID (field 117) ──
             // If a custom PNG was provided AND BLP conversion succeeds, we add a new
@@ -2100,6 +2107,14 @@ public class SpellPatchRequest
     /// original sound are untouched.
     /// </summary>
     public List<CustomAudioTrack>? CustomAudio { get; set; }
+
+    /// <summary>
+    /// Spell Completer: the creator's kit-level composition (which models in which
+    /// attachment slot at what scale, the caster animation per stage, the missile).
+    /// Applied by SpellVisualCloner while cloning the visual chain; null = clone the
+    /// source verbatim.
+    /// </summary>
+    public SpellComposition? Composition { get; set; }
 
     /// <summary>
     /// Session 33: Additional rank entries that need Spell.dbc + SkillLineAbility.dbc patching.

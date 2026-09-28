@@ -394,6 +394,7 @@
                 field('Spell level', 'level', src.spellLevel, { type: 'number' }) +
                 field('Max level', 'maxLevel', src.maxLevel, { type: 'number' }) +
                 field('Cooldown (ms)', 'cooldown', src.cooldown, { type: 'number' }) +
+                field('Missile speed (yd/s)', 'speed', src.speed, { type: 'number', step: '0.5' }) +
                 '<div><label>Cast time</label>' + selectHtml('castTime', refOptions(refs.castTimes), src.castingTimeIndex) + '</div>' +
                 '<div><label>Range</label>' + selectHtml('range', refOptions(refs.ranges), src.rangeIndex) + '</div>' +
                 '<div><label>Duration (auras/DoTs)</label>' + selectHtml('duration', refOptions(refs.durations), src.durationIndex) + '</div>' +
@@ -468,6 +469,7 @@
 
     function val(card, key) { const el = card.querySelector('[data-f="' + key + '"]'); return el ? el.value.trim() : ''; }
     function num(card, key) { const v = val(card, key); return v === '' ? null : parseInt(v, 10); }
+    function fnum(card, key) { const v = val(card, key); return v === '' ? null : parseFloat(v); }
     function checked(card, key) { const el = card.querySelector('[data-f="' + key + '"]'); return !!(el && el.checked); }
 
     function changedEffects(card) {
@@ -537,6 +539,7 @@
             spellLevel: num(card, 'level'),
             maxLevel: num(card, 'maxLevel'),
             cooldown: num(card, 'cooldown'),
+            missileSpeed: fnum(card, 'speed'),
             castingTimeIndex: num(card, 'castTime'),
             rangeIndex: num(card, 'range'),
             durationIndex: num(card, 'duration'),

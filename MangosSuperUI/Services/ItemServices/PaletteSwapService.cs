@@ -272,7 +272,7 @@ public partial class PaletteSwapService
     /// <summary>Folded into every cached recolor file name. Bump it whenever the recolor output for the
     /// same inputs changes (a theory rewrite, a new anchor rule) so stale previews cannot be served
     /// back — that is exactly what hid the Onslaught fix behind yesterday's blue cache.</summary>
-    public const string RecolorVersion = "p5";
+    public const string RecolorVersion = "p6";
 
     public static readonly string[] RecolorTheories =
         { "none", "primary", "fan", "identity", "analogous", "accent", "luminance", "bank" };
@@ -748,7 +748,7 @@ public partial class PaletteSwapService
             // material by pixel count, so it is the anchor and takes the pick. Per-pixel lightness
             // is preserved, so true blacks stay black — a hue at zero lightness is still black.
             bool straightTheory = string.Equals(theory, "none", StringComparison.OrdinalIgnoreCase);
-            if (straightTheory) present = FoldStructuralIntoGrey(present);
+            if (straightTheory) present = OrderForStraightRecolor(present);
 
             var chromatic = present.Where(f => !StructuralFamilies.Contains(f.Family)).ToList();
             var structural = present.Where(f => StructuralFamilies.Contains(f.Family)).ToList();
@@ -795,6 +795,12 @@ public partial class PaletteSwapService
             // of dark plate) belong with the neutral plate they shade, not next to it as a second
             // material that then stays its own colour while the shadows shift.
             var matGroups = GroupMaterials(chromatic, straightTheory ? 0.35f : 0.25f);
+            // GroupMaterials re-sorts by coverage; "none" ranks its primary by StraightPrimaryScore
+            // (OrderForStraightRecolor put it first), so the group carrying it goes back to the front
+            // or the neutral mass wins by pixel count again — the very regression that made a white
+            // pick lift the Warglaive's steel while its green stayed put.
+            if (straightTheory && chromatic.Count > 0)
+                matGroups = matGroups.OrderByDescending(g => g.Members.Contains(chromatic[0])).ToList();
             var groupFams = matGroups.Select(g => g.Group).ToList();
             var groupTargets = BuildSeededTargets(theory, rng, baseHue, groupFams, satScale, lightBias,
                 baseSatOverride, baseLightOverride, anchor);
@@ -921,6 +927,39 @@ public partial class PaletteSwapService
     /// "primary" lands every slot's biggest material on the pick and the whole piece reads as one
     /// flat colour. Detect once across all of them and hand the result to each recolor as
     /// <c>anchor</c>, so only that family takes the pick and everything else keeps its relationship.</summary>
+    /// <summary>How much of an item's visible COLOUR a family carries: its coverage weighted by its
+    /// saturation. This — not raw pixel count — is what ranks the primary under "none". Folding the
+    /// black/white structure into grey (so dark plate is one material) handed the neutral mass the
+    /// top pixel count on every item that has one, including items whose actual colour is a
+    /// saturated material of fewer pixels: on the Warglaive of Azzinoth the folded steel is 58 % of
+    /// the pixels at 0.18 saturation and the green is 38 % at 0.71, and ranking by pixels alone made
+    /// "none" move the steel and leave the green untouched — a white pick lifted the whole weapon to
+    /// white and a blue pick turned the steel blue around unchanged green blades. Weighted by
+    /// saturation the green wins (27 vs 10) while the Onslaught helm — 93 % neutral plate at 0.13
+    /// against 6 % gold trim at 0.43 — still resolves to the plate (12 vs 3), which is the case the
+    /// fold exists for.</summary>
+    internal static double StraightPrimaryScore(DetectedFamily f) => f.Percent * Math.Max(f.MeanSat, 0.02f);
+
+    /// <summary>The colour group "none" moves, chosen from one texture's detected families: black and
+    /// white folded into grey so the neutral structure is one material, then the family with the
+    /// highest <see cref="StraightPrimaryScore"/>. The picker-seed endpoints use this too, so the
+    /// colour the picker starts from is the colour the recolor will move.</summary>
+    public static DetectedFamily? ChooseStraightPrimary(List<DetectedFamily> present) =>
+        OrderForStraightRecolor(present).FirstOrDefault(f => !StructuralFamilies.Contains(f.Family));
+
+    /// <summary>Families as "none" ranks them: folded, primary first, the rest by pixel count.</summary>
+    private static List<DetectedFamily> OrderForStraightRecolor(List<DetectedFamily> present)
+    {
+        var folded = FoldStructuralIntoGrey(present);
+        var primary = folded.Where(f => !StructuralFamilies.Contains(f.Family) && f.PixelCount > 0)
+                            .OrderByDescending(StraightPrimaryScore).ThenByDescending(f => f.PixelCount)
+                            .FirstOrDefault();
+        if (primary is null) return folded;
+        return folded.OrderByDescending(f => ReferenceEquals(f, primary))
+                     .ThenByDescending(f => f.PixelCount)
+                     .ToList();
+    }
+
     /// <summary>Merge the white/black lightness families into "grey" (creating it if needed) so a
     /// near-neutral material is one family by pixel count. Used by the "none" theory only.</summary>
     private static List<DetectedFamily> FoldStructuralIntoGrey(List<DetectedFamily> present)
@@ -966,7 +1005,13 @@ public partial class PaletteSwapService
             }
         }
         if (totals.Count == 0) return null;
-        var (family, agg) = totals.OrderByDescending(kv => kv.Value.Pixels).First();
+        // Same rule as the single-texture primary (StraightPrimaryScore): coverage weighted by
+        // saturation, so a set's real colour outranks its neutral plate mass but bare plate with a
+        // sliver of trim still anchors on the plate.
+        var (family, agg) = totals
+            .OrderByDescending(kv => kv.Value.Pixels * Math.Max(kv.Value.SatSum / kv.Value.Pixels, 0.02))
+            .ThenByDescending(kv => kv.Value.Pixels)
+            .First();
         float hue = (float)((Math.Atan2(agg.SinSum, agg.CosSum) * 180.0 / Math.PI + 360.0) % 360.0);
         return new RecolorAnchor(family, hue, (float)(agg.SatSum / agg.Pixels), (float)(agg.LightSum / agg.Pixels));
     }
